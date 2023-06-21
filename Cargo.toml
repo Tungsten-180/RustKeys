@@ -1,0 +1,9 @@
+[package]
+name = "keyboard-bindings"
+version = "0.1.0"
+authors = ["Tungsten <tungsten180@proton.me>"]
+edition = "2018"
+
+[dependencies]
+evdev = "0.12.1"
+

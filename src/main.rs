@@ -84,33 +84,24 @@ enum Commands {
     Empty,
 }
 #[derive(Debug, Clone, Copy)]
-enum Lposition {
-    Off,
+enum Position {
     One,
     Two,
     Three,
     Four,
     Five,
 }
-#[derive(Debug, Clone, Copy)]
-enum Sposition {
-    Off,
-    One,
-    Two,
-}
 struct KeyProcessor {
     short: [Option<OrderedKeyPress>; 2],
-    sposition: Sposition,
     long: [Option<OrderedKeyPress>; 5],
-    lposition: Lposition,
+    position: Position,
 }
 impl KeyProcessor {
     fn new() -> Self {
         Self {
             short: [None, None],
-            sposition: Sposition::One,
             long: [None, None, None, None, None],
-            lposition: Lposition::Off,
+            position: Position::One,
         }
     }
     fn take(&mut self, event: OrderedKeyPress) {
@@ -120,46 +111,29 @@ impl KeyProcessor {
         }
     }
     fn keep(&mut self, event: OrderedKeyPress) {
-        match self.sposition {
-            Sposition::One => {
+        println!("keeping:{:?}", event);
+        match self.position {
+            Position::One => {
                 self.short[0] = Some(event);
-                self.sposition = Sposition::Two;
+                self.position = Position::Two;
                 return;
             }
-            Sposition::Two => {
+            Position::Two => {
                 self.short[1] = Some(event);
                 self.check();
                 return;
             }
-            Sposition::Off => {}
-        }
-        match self.lposition {
-            Lposition::Off => {
-                panic!()
-            }
-            Lposition::One => {
-                self.short[0] = Some(event);
-                self.lposition = Lposition::Off;
-                self.sposition = Sposition::Two;
-            }
-            Lposition::Two => {
-                self.short[1] = Some(event);
-                self.lposition = Lposition::Off;
-                self.sposition = Sposition::Two;
-                self.check();
-                return;
-            }
-            Lposition::Three => {
+            Position::Three => {
                 self.long[2] = Some(event);
-                self.lposition = Lposition::Four;
+                self.position = Position::Four;
                 return;
             }
-            Lposition::Four => {
+            Position::Four => {
                 self.long[3] = Some(event);
-                self.lposition = Lposition::Five;
+                self.position = Position::Five;
                 return;
             }
-            Lposition::Five => {
+            Position::Five => {
                 self.long[4] = Some(event);
                 self.check();
                 return;
@@ -168,9 +142,9 @@ impl KeyProcessor {
     }
     fn check(&mut self) {
         let mut s = self.short.iter();
-        let l = self.long.iter();
-        match (self.sposition, self.lposition) {
-            (Sposition::Two, Lposition::Off) => {
+        let mut l = self.long.iter().peekable();
+        match self.position {
+            Position::Two => {
                 if s.by_ref().any(|item| item.is_none()) {
                     if s.as_ref()
                         .iter()
@@ -183,16 +157,28 @@ impl KeyProcessor {
                     }
                 }
             }
-            (Sposition::Off, Lposition::Five) => {
-                if l.take(2).all(|item| {
-                    if let Some(a) = item {
-                        a.key == Key::KEY_LEFTSHIFT
-                    } else {
-                        false
+            Position::Five => {
+                if l.clone().any(|i| i.is_none()) {
+                    panic!();
+                }
+                let mut l = l.clone().map(|i| i.unwrap()).peekable();
+                if l.clone().take(2).all(|item| item.key == Key::KEY_LEFTSHIFT) {
+                    let a = l.clone().nth(3).unwrap().key;
+                    let b = l.clone().nth(4).unwrap().key;
+                    if a == l.clone().nth(5).unwrap().key && b != Key::KEY_LEFTSHIFT {
+                        println!("shifted {:?}", b);
                     }
-                }) {}
+                } else {
+                    for _ in 0..l.clone().count() {
+                        if l.next().unwrap().key == l.peek().unwrap().key
+                            && l.peek().unwrap().key != Key::KEY_LEFTSHIFT
+                        {
+                            println!("two found in five:{:?}", l.peek().unwrap().key);
+                        }
+                    }
+                }
             }
-            (..) => panic!(),
+            _ => panic!(),
         }
     }
 }

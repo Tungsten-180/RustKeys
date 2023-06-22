@@ -32,11 +32,12 @@ impl std::convert::TryFrom<InputEvent> for OrderedKeyPress {
         }
     }
 }
+#[derive(Debug)]
 struct Comparator<T> {
     last: Option<T>,
     value: bool,
 }
-impl<T: std::cmp::Eq + std::clone::Clone> Comparator<T> {
+impl<T: std::cmp::Eq + std::clone::Clone + std::fmt::Debug> Comparator<T> {
     fn new() -> Self {
         Self {
             value: true,
@@ -44,6 +45,7 @@ impl<T: std::cmp::Eq + std::clone::Clone> Comparator<T> {
         }
     }
     fn cmp(&self, t: T) -> Self {
+        println!("comp:{:?}", self);
         match (self.value, self.last.clone()) {
             (false, None) => Self {
                 last: None,
@@ -90,19 +92,22 @@ enum Position {
     Three,
     Four,
     Five,
+    Six,
 }
 struct KeyProcessor {
-    short: [Option<OrderedKeyPress>; 2],
-    long: [Option<OrderedKeyPress>; 5],
+    long: [Option<OrderedKeyPress>; 6],
     position: Position,
 }
 impl KeyProcessor {
     fn new() -> Self {
         Self {
-            short: [None, None],
-            long: [None, None, None, None, None],
+            long: [None, None, None, None, None, None],
             position: Position::One,
         }
+    }
+    fn clear(&mut self) {
+        self.long = [None, None, None, None, None, None];
+        self.position = Position::One;
     }
     fn take(&mut self, event: OrderedKeyPress) {
         match event.value {
@@ -111,15 +116,14 @@ impl KeyProcessor {
         }
     }
     fn keep(&mut self, event: OrderedKeyPress) {
-        println!("keeping:{:?}", event);
         match self.position {
             Position::One => {
-                self.short[0] = Some(event);
+                self.long[0] = Some(event);
                 self.position = Position::Two;
                 return;
             }
             Position::Two => {
-                self.short[1] = Some(event);
+                self.long[1] = Some(event);
                 self.check();
                 return;
             }
@@ -135,47 +139,56 @@ impl KeyProcessor {
             }
             Position::Five => {
                 self.long[4] = Some(event);
+                self.position = Position::Six;
+                return;
+            }
+            Position::Six => {
+                self.long[5] = Some(event);
                 self.check();
                 return;
             }
         }
     }
     fn check(&mut self) {
-        let mut s = self.short.iter();
-        let mut l = self.long.iter().peekable();
+        let mut l = self.long.iter();
         match self.position {
             Position::Two => {
-                if s.by_ref().any(|item| item.is_none()) {
-                    if s.as_ref()
+                let short = [self.long[0], self.long[1]];
+                if short.iter().all(|item| item.is_some()) {
+                    println!("{:?}", short);
+                    if short
                         .iter()
                         .fold(Comparator::<Key>::new(), |comp, new| {
                             comp.cmp(new.unwrap().key)
                         })
                         .value
+                        == true
+                        && short[0].unwrap().key != Key::KEY_LEFTCTRL
                     {
-                        println!("Key success:{:?}", s.next().unwrap().unwrap().key);
+                        println!("Key success:{:?}", short.iter().next());
+                        self.clear();
+                    } else {
+                        self.position = Position::Three;
                     }
+                } else {
+                    panic!()
                 }
             }
-            Position::Five => {
+            Position::Six => {
+                println!("five:{:?}", l.clone());
                 if l.clone().any(|i| i.is_none()) {
                     panic!();
                 }
                 let mut l = l.clone().map(|i| i.unwrap()).peekable();
-                if l.clone().take(2).all(|item| item.key == Key::KEY_LEFTSHIFT) {
-                    let a = l.clone().nth(3).unwrap().key;
-                    let b = l.clone().nth(4).unwrap().key;
-                    if a == l.clone().nth(5).unwrap().key && b != Key::KEY_LEFTSHIFT {
+                if l.clone().take(2).all(|item| item.key == Key::KEY_LEFTCTRL) {
+                    let a = self.long[2].unwrap().key;
+                    let b = self.long[3].unwrap().key;
+                    if a == self.long[4].unwrap().key && b != Key::KEY_LEFTCTRL {
                         println!("shifted {:?}", b);
+                        self.clear()
                     }
                 } else {
-                    for _ in 0..l.clone().count() {
-                        if l.next().unwrap().key == l.peek().unwrap().key
-                            && l.peek().unwrap().key != Key::KEY_LEFTSHIFT
-                        {
-                            println!("two found in five:{:?}", l.peek().unwrap().key);
-                        }
-                    }
+                    self.clear()
                 }
             }
             _ => panic!(),

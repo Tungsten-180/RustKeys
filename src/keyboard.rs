@@ -1,13 +1,8 @@
-use evdev;
 use evdev::InputEventKind;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
-use std::{
-    cell::BorrowMutError,
-    process::{Command, Stdio},
-};
 pub trait Kind {
     fn is_key(&self) -> bool {
         false
@@ -28,10 +23,8 @@ fn read_devices_file() -> Result<String, io::Error> {
 
     let mut s = String::new();
 
-    match file.read_to_string(&mut s) {
-        Ok(_) => return Result::Ok(s),
-        Err(err) => return Result::Err(err),
-    }
+    file.read_to_string(&mut s)?;
+    return Result::Ok(s);
 }
 
 pub fn get_devices_list() -> Vec<String> {

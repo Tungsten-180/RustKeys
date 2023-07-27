@@ -1,5 +1,5 @@
 use core::fmt;
-use evdev::{Device, EventType, InputEvent, Key};
+use evdev::{EventType, InputEvent, Key};
 use std::{
     convert::TryInto,
     io::{self, Write},
@@ -22,7 +22,7 @@ impl NewTrait for Vec<String> {
 
             print!("select one: ");
             Write::flush(&mut io::stdout()).unwrap();
-            let input = std::io::stdin().read_line(&mut user_answer).unwrap();
+            std::io::stdin().read_line(&mut user_answer).unwrap();
 
             match user_answer.trim().parse::<usize>() {
                 Err(err) => {
@@ -40,7 +40,7 @@ impl NewTrait for Vec<String> {
     }
 }
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let mut event: Option<String> = None;
     while &event.is_some() == &false {
         let mut device_list = get_devices_list();
@@ -59,24 +59,20 @@ fn main() {
             .skip_while(|word| !word.contains("event"))
             .next();
     }
-    match get_keyboard(event.unwrap()) {
-        Err(_) => panic!("could not grab keyboard"),
-        Ok(mut device) => {
-            let mut sequence = KeyProcessor::new();
-            loop {
-                if let Ok(events) = device.fetch_events() {
-                    events
-                        .filter(|event| event.kind().is_key())
-                        .for_each(|keyevent| {
-                            sequence.take(
-                                keyevent
-                                    .try_into()
-                                    .ok()
-                                    .expect("input event failed try_into OrderedKeyPress"),
-                            )
-                        })
-                }
-            }
+    let mut device = get_keyboard(event.unwrap())?;
+    let mut sequence = KeyProcessor::new();
+    loop {
+        if let Ok(events) = device.fetch_events() {
+            events
+                .filter(|event| event.kind().is_key())
+                .for_each(|keyevent| {
+                    sequence.take(
+                        keyevent
+                            .try_into()
+                            .ok()
+                            .expect("input event failed try_into OrderedKeyPress"),
+                    )
+                })
         }
     }
 }

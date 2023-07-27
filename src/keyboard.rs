@@ -1,7 +1,13 @@
 use evdev;
 use evdev::InputEventKind;
-use std::process::{Command, Stdio};
-pub const CHERRYKEYBOARD: &str = "0003:046A:003B.0005";
+use std::fs::File;
+use std::io;
+use std::io::prelude::*;
+use std::path::Path;
+use std::{
+    cell::BorrowMutError,
+    process::{Command, Stdio},
+};
 pub trait Kind {
     fn is_key(&self) -> bool {
         false
@@ -15,34 +21,30 @@ impl Kind for InputEventKind {
         }
     }
 }
-pub fn get_keyboard(identifier: &str) -> evdev::Device {
-    let get_devices_list = Command::new("cat")
-        .arg("/proc/bus/input/devices")
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to get list of devices");
-    let device_list = String::from_utf8(
-        get_devices_list
-            .wait_with_output()
-            .expect("failed to get stdout from sudo cat")
-            .stdout,
-    )
-    .expect("stdout returned err");
-    let path = device_list
-        .split("\n")
-        .skip_while(|line| !line.contains(CHERRYKEYBOARD))
-        .skip_while(|line| !line.contains("event"))
-        .next()
-        .expect("line is missing")
-        .split_whitespace()
-        .skip_while(|word| !word.contains("event"))
-        .next()
-        .expect("word event not found");
-    if let Ok(mut device) = evdev::Device::open(format!("/dev/input/{}", path)) {
-        device.grab().expect("grabing failed");
-        device
-    } else {
-        panic!();
+fn read_devices_file() -> Result<String, io::Error> {
+    let path = Path::new("/proc/bus/input/devices");
+
+    let mut file = File::open(&path).expect("file could not be opened");
+
+    let mut s = String::new();
+
+    match file.read_to_string(&mut s) {
+        Ok(_) => return Result::Ok(s),
+        Err(err) => return Result::Err(err),
     }
+}
+
+pub fn get_devices_list() -> Vec<String> {
+    let devices = read_devices_file()
+        .expect("read_devices_failed")
+        .split("\n\n")
+        .map(|i| i.to_string())
+        .collect();
+    return devices;
+}
+
+pub fn get_keyboard<S: Into<String>>(event: S) -> Result<evdev::Device, std::io::Error> {
+    let event: String = event.into();
+    let deviceres = evdev::Device::open(format!("/dev/input/{}", event));
+    return deviceres;
 }

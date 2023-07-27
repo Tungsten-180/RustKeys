@@ -1,8 +1,94 @@
-use std::convert::TryInto;
-
+use core::fmt;
 use evdev::{Device, EventType, InputEvent, Key};
-use keyboard::Kind;
+use std::{
+    convert::TryInto,
+    io::{self, Write},
+};
 mod keyboard;
+use keyboard::{get_devices_list, get_keyboard, Kind};
+trait NewTrait {
+    fn select(&self) -> String;
+}
+
+impl NewTrait for Vec<String> {
+    fn select(&self) -> String {
+        let s = self.clone();
+        let mut index: Option<usize> = None;
+        let mut user_answer = String::new();
+        while index.is_none() {
+            for x in 0..s.len() {
+                println!("{}. -------\n{}", x, s.get(x).unwrap());
+            }
+
+            print!("select one: ");
+            Write::flush(&mut io::stdout()).unwrap();
+            let input = std::io::stdin().read_line(&mut user_answer).unwrap();
+
+            match user_answer.trim().parse::<usize>() {
+                Err(err) => {
+                    eprintln!("{}:{}", err, user_answer);
+                    user_answer.clear();
+                }
+                Ok(number) if s.get(number).is_some() => index = Some(number),
+                Ok(number) => {
+                    eprintln!("{} is not a valid option", number);
+                    user_answer.clear();
+                }
+            }
+        }
+        s.get(index.unwrap()).unwrap().clone()
+    }
+}
+
+fn main() {
+    let mut event: Option<String> = None;
+    while &event.is_some() == &false {
+        let mut device_list = get_devices_list();
+        device_list = device_list
+            .into_iter()
+            .filter(|devicestr| {
+                devicestr.contains("kbd")
+                    && devicestr.contains("usb")
+                    && devicestr.contains("input0")
+            })
+            .collect();
+        event = device_list
+            .select()
+            .split_whitespace()
+            .map(|i| i.to_string())
+            .skip_while(|word| !word.contains("event"))
+            .next();
+    }
+    match get_keyboard(event.unwrap()) {
+        Err(_) => panic!("could not grab keyboard"),
+        Ok(mut device) => {
+            let mut sequence = KeyProcessor::new();
+            loop {
+                if let Ok(events) = device.fetch_events() {
+                    events
+                        .filter(|event| event.kind().is_key())
+                        .for_each(|keyevent| {
+                            sequence.take(
+                                keyevent
+                                    .try_into()
+                                    .ok()
+                                    .expect("input event failed try_into OrderedKeyPress"),
+                            )
+                        })
+                }
+            }
+        }
+    }
+}
+
+struct NotKeyPress(InputEvent);
+
+impl fmt::Display for NotKeyPress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "InputEvent was not a key press")
+    }
+}
+
 impl std::convert::TryFrom<InputEvent> for OrderedKeyPress {
     type Error = ();
     fn try_from(value: InputEvent) -> Result<Self, Self::Error> {
@@ -32,6 +118,7 @@ impl std::convert::TryFrom<InputEvent> for OrderedKeyPress {
         }
     }
 }
+
 #[derive(Debug)]
 struct Comparator<T> {
     last: Option<T>,
@@ -66,12 +153,14 @@ impl<T: std::cmp::Eq + std::clone::Clone + std::fmt::Debug> Comparator<T> {
         }
     }
 }
+
 #[derive(Debug, Clone, Copy)]
 enum Action {
     Down,
     Up,
     Held,
 }
+
 #[derive(Debug, Clone, Copy)]
 struct OrderedKeyPress {
     key: Key,
@@ -82,9 +171,11 @@ impl OrderedKeyPress {
         Self { key, value }
     }
 }
+
 enum Commands {
     Empty,
 }
+
 #[derive(Debug, Clone, Copy)]
 enum Position {
     One,
@@ -94,6 +185,7 @@ enum Position {
     Five,
     Six,
 }
+
 struct KeyProcessor {
     long: [Option<OrderedKeyPress>; 6],
     position: Position,
@@ -150,7 +242,7 @@ impl KeyProcessor {
         }
     }
     fn check(&mut self) {
-        let mut l = self.long.iter();
+        let l = self.long.iter();
         match self.position {
             Position::Two => {
                 let short = [self.long[0], self.long[1]];
@@ -179,7 +271,7 @@ impl KeyProcessor {
                 if l.clone().any(|i| i.is_none()) {
                     panic!();
                 }
-                let mut l = l.clone().map(|i| i.unwrap()).peekable();
+                let l = l.clone().map(|i| i.unwrap()).peekable();
                 if l.clone().take(2).all(|item| item.key == Key::KEY_LEFTCTRL) {
                     let a = self.long[2].unwrap().key;
                     let b = self.long[3].unwrap().key;
@@ -192,24 +284,6 @@ impl KeyProcessor {
                 }
             }
             _ => panic!(),
-        }
-    }
-}
-fn main() {
-    let mut device = keyboard::get_keyboard(keyboard::CHERRYKEYBOARD);
-    let mut sequence = KeyProcessor::new();
-    loop {
-        if let Ok(events) = device.fetch_events() {
-            events
-                .filter(|event| event.kind().is_key())
-                .for_each(|keyevent| {
-                    sequence.take(
-                        keyevent
-                            .try_into()
-                            .ok()
-                            .expect("input event failed try_into OrderedKeyPress"),
-                    )
-                })
         }
     }
 }
